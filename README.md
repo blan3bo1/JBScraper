@@ -197,4 +197,4 @@ Swappa requires visiting every listing page individually to find the iOS version
 ## Credits
 
 - Original [JBScrape](https://github.com/zeroxjf/JBScrape) by zeroxjf
-- Browser selection, iPad support, Windows port, stop-and-show-results, and GUI by this fork
+- Browser selection, iPad support, Windows port, stop-and-show-results, and GUI by Blan3bo1
