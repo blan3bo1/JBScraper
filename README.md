@@ -34,8 +34,8 @@ Original script by [zeroxjf](https://github.com/zeroxjf/JBScrape). This fork add
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/yourusername/JBScrape.git
-cd JBScrape
+git clone https://github.com/blan3bo1/JBScraper.git
+cd JBScraper
 ```
 
 ### 2. Install Python dependencies
