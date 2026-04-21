@@ -17,249 +17,387 @@ import os
 IS_WINDOWS = sys.platform == "win32"
 IS_MAC     = sys.platform == "darwin"
 
-# ─── Colors ───────────────────────────────────────────────────────────────────
+# ── Palette — matches the screenshot's Catppuccin-ish dark charcoal ───────────
+BG      = "#1e1e2e"   # base — deep charcoal, the wallpaper-matching bg
+MANTLE  = "#181825"   # slightly darker, for panels/bars
+CRUST   = "#11111b"   # darkest, titlebar / input bg
+SURFACE = "#313244"   # surface0, subtle borders and hover
+OVERLAY = "#45475a"   # overlay0, muted text / inactive
+TEXT    = "#cdd6f4"   # main text — blue-tinted white like in screenshot
+SUBTEXT = "#a6adc8"   # subtext0
+MUTED   = "#585b70"   # comment, very muted
+ACCENT  = "#89b4fa"   # blue — matches the fastfetch highlight color
+GREEN   = "#a6e3a1"   # green — like the ✓ lines
+YELLOW  = "#f9e2af"   # yellow — warnings
+RED     = "#f38ba8"   # red — errors
+TEAL    = "#94e2d5"   # teal — for variety
+BORDER  = "#313244"   # 1px borders everywhere
 
-BG      = "#0d0f14"
-BG2     = "#13161e"
-BG3     = "#1a1e28"
-ACCENT  = "#00e5ff"
-ACCENT2 = "#ff4d6d"
-GREEN   = "#00ff9f"
-YELLOW  = "#ffd166"
-TEXT    = "#e2e8f0"
-MUTED   = "#64748b"
-BORDER  = "#1e2535"
+# Fonts — SF Mono on mac, JetBrains Mono fallback, Consolas on windows
+if IS_MAC:
+    MONO = "SF Mono"
+elif IS_WINDOWS:
+    MONO = "Cascadia Code" if True else "Consolas"
+else:
+    MONO = "JetBrains Mono"
 
-MONO = "SF Mono" if IS_MAC else "Consolas"
+def f(size, bold=False, italic=False):
+    weight = "bold" if bold else "normal"
+    slant  = "italic" if italic else "roman"
+    return (MONO, size, weight, slant)
 
-# ─── App ─────────────────────────────────────────────────────────────────────
+
+# ── App ────────────────────────────────────────────────────────────────────────
 
 class JBScrapeUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JBScrape UI")
-        self.geometry("920x660")
-        self.minsize(700, 480)
+        self.title("jbscrape — ui wrapper")
+        self.geometry("960x680")
+        self.minsize(720, 500)
         self.configure(bg=BG)
+        # Remove default titlebar decorations on supported platforms
+        # self.overrideredirect(True)  # uncomment for fully borderless
         self._proc       = None
-        self._pty_master = None   # macOS/Linux only
-        self._stdin_pipe = None   # Windows only
+        self._pty_master = None
+        self._stdin_pipe = None
         self._build_ui()
         self._auto_find_script()
 
-    def _f(self, size, bold=False):
-        return (MONO, size, "bold") if bold else (MONO, size)
-
-    # ── Build ─────────────────────────────────────────────────────────────────
+    # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        self._build_header()
+        self._build_titlebar()
         self._build_config()
-        self._build_statusbar()
-        self._build_input_row()
         self._build_output()
+        self._build_input_row()
+        self._build_statusbar()
 
-    def _build_header(self):
-        hdr = tk.Frame(self, bg=BG2, height=52)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        platform_label = "Windows" if IS_WINDOWS else "macOS"
-        tk.Label(hdr, text="◈  JBScrape UI", font=self._f(17, True),
-                 fg=ACCENT, bg=BG2).pack(side="left", padx=20, pady=10)
-        tk.Label(hdr, text=f"wrapper for JBScrape  ·  {platform_label}",
-                 font=self._f(10), fg=MUTED, bg=BG2).pack(side="left")
-        self._dot = tk.Label(hdr, text="●  idle", font=self._f(10), fg=MUTED, bg=BG2)
-        self._dot.pack(side="right", padx=20)
+    # ── Titlebar ──────────────────────────────────────────────────────────────
+
+    def _build_titlebar(self):
+        bar = tk.Frame(self, bg=MANTLE, height=32)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+
+        # left: name
+        tk.Label(bar, text=" jbscrape", font=f(11, bold=True),
+                 fg=ACCENT, bg=MANTLE).pack(side="left", padx=(8, 0))
+        platform_str = "windows" if IS_WINDOWS else "macos"
+        tk.Label(bar, text=f"  ·  ui wrapper  ·  {platform_str}",
+                 font=f(10), fg=MUTED, bg=MANTLE).pack(side="left")
+
+        # right: status dot
+        self._dot = tk.Label(bar, text="● idle", font=f(9),
+                             fg=OVERLAY, bg=MANTLE)
+        self._dot.pack(side="right", padx=14)
+
+        # bottom border
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+
+    # ── Config panel ──────────────────────────────────────────────────────────
 
     def _build_config(self):
-        cfg = tk.Frame(self, bg=BG2)
-        cfg.pack(fill="x", padx=14, pady=(10, 0))
+        outer = tk.Frame(self, bg=MANTLE)
+        outer.pack(fill="x")
 
-        # Script path
-        row1 = tk.Frame(cfg, bg=BG2)
-        row1.pack(fill="x", pady=(8, 4))
-        tk.Label(row1, text="jbscrape.py", font=self._f(11), fg=MUTED, bg=BG2,
-                 width=12, anchor="w").pack(side="left")
-        self._script_var = tk.StringVar()
-        tk.Entry(row1, textvariable=self._script_var, font=self._f(11),
-                 bg=BG3, fg=TEXT, insertbackground=ACCENT, relief="flat", bd=0
-                 ).pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 6))
-        tk.Button(row1, text="Browse", font=self._f(10), fg=TEXT, bg=BG3,
-                  relief="flat", cursor="hand2", padx=10, pady=4, bd=0,
-                  command=self._browse).pack(side="left")
+        # ── paths block
+        self._section_label(outer, "paths")
 
-        # Python interpreter
-        row2 = tk.Frame(cfg, bg=BG2)
-        row2.pack(fill="x", pady=4)
-        tk.Label(row2, text="Python", font=self._f(11), fg=MUTED, bg=BG2,
-                 width=12, anchor="w").pack(side="left")
-        self._python_var = tk.StringVar(value=sys.executable)
-        tk.Entry(row2, textvariable=self._python_var, font=self._f(11),
-                 bg=BG3, fg=TEXT, insertbackground=ACCENT, relief="flat", bd=0
-                 ).pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 6))
-        tk.Button(row2, text="Browse", font=self._f(10), fg=TEXT, bg=BG3,
-                  relief="flat", cursor="hand2", padx=10, pady=4, bd=0,
-                  command=self._browse_python).pack(side="left")
+        grid = tk.Frame(outer, bg=MANTLE)
+        grid.pack(fill="x", padx=14, pady=(2, 6))
+        grid.columnconfigure(1, weight=1)
 
-        # --browser row
-        opts1 = tk.Frame(cfg, bg=BG2)
-        opts1.pack(fill="x", pady=(6, 2))
-        tk.Label(opts1, text="--browser", font=self._f(11), fg=MUTED, bg=BG2,
-                 width=12, anchor="w").pack(side="left")
+        self._path_row(grid, row=0, label="script",
+                       var_name="_script_var", browse_cmd=self._browse)
+        self._path_row(grid, row=1, label="python",
+                       var_name="_python_var", browse_cmd=self._browse_python,
+                       default=sys.executable)
+
+        # ── options block
+        self._section_label(outer, "options")
+
+        opts = tk.Frame(outer, bg=MANTLE)
+        opts.pack(fill="x", padx=14, pady=(2, 0))
+
+        # row 1 — browser, sites
+        r1 = tk.Frame(opts, bg=MANTLE)
+        r1.pack(fill="x", pady=(0, 6))
+
+        self._inline_label(r1, "browser")
         self._browser_var = tk.StringVar(value="chrome")
-        nb_style = ttk.Style()
-        nb_style.theme_use("default")
-        nb_style.configure("JB.TCombobox", fieldbackground=BG3, background=BG3,
-                            foreground=TEXT, selectbackground=BG3,
-                            selectforeground=ACCENT, borderwidth=0)
-        ttk.Combobox(opts1, textvariable=self._browser_var,
-                     values=["chrome", "firefox", "edge"],
-                     state="readonly", width=12,
-                     style="JB.TCombobox", font=self._f(11)
-                     ).pack(side="left", ipady=4, padx=(0, 16))
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("JB.TCombobox",
+                        fieldbackground=CRUST, background=CRUST,
+                        foreground=TEXT, selectbackground=SURFACE,
+                        selectforeground=ACCENT, borderwidth=0,
+                        arrowcolor=MUTED, relief="flat")
+        style.map("JB.TCombobox", fieldbackground=[("readonly", CRUST)])
+        cb = ttk.Combobox(r1, textvariable=self._browser_var,
+                          values=["chrome", "firefox", "edge"],
+                          state="readonly", width=9,
+                          style="JB.TCombobox", font=f(10))
+        cb.pack(side="left", ipady=3, padx=(4, 20))
 
-        # --sites
-        tk.Label(opts1, text="--sites", font=self._f(11), fg=MUTED, bg=BG2
-                 ).pack(side="left", padx=(0, 6))
+        self._inline_label(r1, "sites")
         self._sites_ebay   = tk.BooleanVar(value=True)
         self._sites_swappa = tk.BooleanVar(value=True)
-        tk.Checkbutton(opts1, text="ebay", variable=self._sites_ebay,
-                       font=self._f(11), fg=TEXT, bg=BG2, selectcolor=ACCENT,
-                       activebackground=BG2, highlightthickness=0
-                       ).pack(side="left", padx=(0, 4))
-        tk.Checkbutton(opts1, text="swappa", variable=self._sites_swappa,
-                       font=self._f(11), fg=TEXT, bg=BG2, selectcolor=ACCENT,
-                       activebackground=BG2, highlightthickness=0
-                       ).pack(side="left", padx=(0, 16))
+        self._pill_check(r1, "ebay",   self._sites_ebay,   ACCENT)
+        self._pill_check(r1, "swappa", self._sites_swappa, GREEN)
 
-        # --pages / --delay / flags row
-        opts2 = tk.Frame(cfg, bg=BG2)
-        opts2.pack(fill="x", pady=(2, 8))
-        tk.Label(opts2, text="--pages", font=self._f(11), fg=MUTED, bg=BG2,
-                 width=12, anchor="w").pack(side="left")
+        # row 2 — pages, delay, flags
+        r2 = tk.Frame(opts, bg=MANTLE)
+        r2.pack(fill="x", pady=(0, 6))
+
+        self._inline_label(r2, "pages")
         self._pages_var = tk.StringVar(value="3")
-        tk.Entry(opts2, textvariable=self._pages_var, font=self._f(11),
-                 bg=BG3, fg=TEXT, insertbackground=ACCENT,
-                 relief="flat", bd=0, width=4
-                 ).pack(side="left", ipady=4, padx=(0, 16))
+        self._num_entry(r2, self._pages_var)
 
-        tk.Label(opts2, text="--delay", font=self._f(11), fg=MUTED, bg=BG2
-                 ).pack(side="left", padx=(0, 4))
+        self._inline_label(r2, "delay", pad_left=16)
         self._delay_var = tk.StringVar(value="2")
-        tk.Entry(opts2, textvariable=self._delay_var, font=self._f(11),
-                 bg=BG3, fg=TEXT, insertbackground=ACCENT,
-                 relief="flat", bd=0, width=4
-                 ).pack(side="left", ipady=4, padx=(0, 16))
+        self._num_entry(r2, self._delay_var)
+
+        tk.Frame(r2, bg=MANTLE, width=20).pack(side="left")
 
         self._no_headless_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(opts2, text="--no-headless", variable=self._no_headless_var,
-                       font=self._f(11), fg=TEXT, bg=BG2, selectcolor=ACCENT,
-                       activebackground=BG2, highlightthickness=0
-                       ).pack(side="left", padx=(0, 8))
-
         self._interactive_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(opts2, text="--interactive", variable=self._interactive_var,
-                       font=self._f(11), fg=TEXT, bg=BG2, selectcolor=ACCENT,
-                       activebackground=BG2, highlightthickness=0
-                       ).pack(side="left", padx=(0, 8))
+        self._note_var        = tk.BooleanVar(value=False)
+        note_label = "--note (notepad)" if IS_WINDOWS else "--note (notes)"
+        self._pill_check(r2, "--no-headless", self._no_headless_var, YELLOW)
+        self._pill_check(r2, "--interactive", self._interactive_var, YELLOW)
+        self._pill_check(r2, note_label,      self._note_var,        YELLOW)
 
-        note_label = "--note (Notepad)" if IS_WINDOWS else "--note (Notes app)"
-        self._note_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(opts2, text=note_label, variable=self._note_var,
-                       font=self._f(11), fg=TEXT, bg=BG2, selectcolor=ACCENT,
-                       activebackground=BG2, highlightthickness=0
-                       ).pack(side="left")
+        # ── toolbar
+        tk.Frame(outer, bg=BORDER, height=1).pack(fill="x", pady=(6, 0))
+        toolbar = tk.Frame(outer, bg=MANTLE)
+        toolbar.pack(fill="x", padx=14, pady=8)
 
-        # Toolbar
-        tk.Frame(cfg, bg=BORDER, height=1).pack(fill="x", pady=(0, 8))
-        toolbar = tk.Frame(cfg, bg=BG2)
-        toolbar.pack(fill="x", pady=(0, 10))
+        self._run_btn = tk.Button(
+            toolbar, text="▶ run",
+            font=f(10, bold=True),
+            fg=CRUST, bg=ACCENT,
+            activeforeground=CRUST, activebackground=TEXT,
+            relief="flat", cursor="hand2",
+            padx=16, pady=6, bd=0,
+            command=self._run,
+        )
+        self._run_btn.pack(side="left", padx=(0, 4))
 
-        self._run_btn = tk.Button(toolbar, text="▶  RUN", font=self._f(12, True),
-                                  fg=BG, bg=ACCENT, relief="flat", cursor="hand2",
-                                  padx=20, pady=8, bd=0, command=self._run)
-        self._run_btn.pack(side="left", padx=(0, 6))
+        self._stop_btn = tk.Button(
+            toolbar, text="■ stop",
+            font=f(10, bold=True),
+            fg=OVERLAY, bg=SURFACE,
+            activeforeground=RED, activebackground=SURFACE,
+            relief="flat", cursor="hand2",
+            padx=12, pady=6, bd=0, state="disabled",
+            command=self._stop,
+        )
+        self._stop_btn.pack(side="left", padx=(0, 4))
 
-        self._stop_btn = tk.Button(toolbar, text="■  STOP", font=self._f(12, True),
-                                   fg=TEXT, bg=BG3, relief="flat", cursor="hand2",
-                                   padx=14, pady=8, bd=0, state="disabled",
-                                   command=self._stop)
-        self._stop_btn.pack(side="left", padx=(0, 6))
+        tk.Button(toolbar, text="clear",
+                  font=f(10), fg=MUTED, bg=MANTLE,
+                  activeforeground=SUBTEXT, activebackground=MANTLE,
+                  relief="flat", cursor="hand2",
+                  padx=10, pady=6, bd=0,
+                  command=self._clear).pack(side="left", padx=(0, 4))
 
-        tk.Button(toolbar, text="✕  Clear", font=self._f(10), fg=MUTED, bg=BG3,
-                  relief="flat", cursor="hand2", padx=10, pady=8, bd=0,
-                  command=self._clear).pack(side="left")
-
-        tk.Button(toolbar, text="📂  Open folder", font=self._f(10), fg=MUTED, bg=BG3,
-                  relief="flat", cursor="hand2", padx=10, pady=8, bd=0,
+        tk.Button(toolbar, text="open folder",
+                  font=f(10), fg=MUTED, bg=MANTLE,
+                  activeforeground=SUBTEXT, activebackground=MANTLE,
+                  relief="flat", cursor="hand2",
+                  padx=10, pady=6, bd=0,
                   command=self._open_folder).pack(side="right")
 
-    def _build_input_row(self):
-        row = tk.Frame(self, bg=BG2)
-        row.pack(fill="x", side="bottom", padx=14, pady=(0, 4))
+        # bottom border
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        tk.Label(row, text="›", font=self._f(14, True),
-                 fg=ACCENT, bg=BG2).pack(side="left", padx=(6, 4))
+    # ── Output ────────────────────────────────────────────────────────────────
+
+    def _build_output(self):
+        wrap = tk.Frame(self, bg=BG)
+        wrap.pack(fill="both", expand=True)
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
+
+        self._out = tk.Text(
+            wrap,
+            font=f(10),
+            bg=BG, fg=TEXT,
+            insertbackground=ACCENT,
+            relief="flat", bd=0,
+            state="disabled",
+            wrap="word",
+            cursor="arrow",
+            padx=16, pady=10,
+            spacing1=1, spacing3=1,
+        )
+
+        vsb = ttk.Scrollbar(wrap, orient="vertical", command=self._out.yview)
+        style = ttk.Style()
+        style.configure("JB.Vertical.TScrollbar",
+                        background=SURFACE, troughcolor=BG,
+                        bordercolor=BG, arrowcolor=OVERLAY, relief="flat")
+        vsb.configure(style="JB.Vertical.TScrollbar")
+        self._out.configure(yscrollcommand=vsb.set)
+
+        self._out.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+
+        for tag, color in [
+            ("green",  GREEN),  ("yellow", YELLOW), ("red",    RED),
+            ("cyan",   ACCENT), ("muted",  MUTED),  ("white",  TEXT),
+            ("input",  TEAL),   ("purple", "#cba6f7"),
+            ("subtext", SUBTEXT),
+        ]:
+            self._out.tag_configure(tag, foreground=color)
+
+    # ── Input row ─────────────────────────────────────────────────────────────
+
+    def _build_input_row(self):
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+
+        row = tk.Frame(self, bg=MANTLE)
+        row.pack(fill="x")
+
+        tk.Label(row, text=" ›", font=f(12, bold=True),
+                 fg=ACCENT, bg=MANTLE).pack(side="left", padx=(6, 0))
 
         self._input_var = tk.StringVar()
-        self._input_entry = tk.Entry(row, textvariable=self._input_var,
-                                     font=self._f(11), bg=BG3, fg=YELLOW,
-                                     insertbackground=YELLOW, relief="flat", bd=0,
-                                     state="disabled")
-        self._input_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 6))
+        self._input_entry = tk.Entry(
+            row, textvariable=self._input_var,
+            font=f(10),
+            bg=MANTLE, fg=YELLOW,
+            insertbackground=YELLOW,
+            relief="flat", bd=0,
+            highlightthickness=0,
+            state="disabled",
+        )
+        self._input_entry.pack(side="left", fill="x", expand=True, ipady=7, padx=(6, 6))
         self._input_entry.bind("<Return>", lambda e: self._send_input())
 
-        self._send_btn = tk.Button(row, text="Send", font=self._f(10),
-                                   fg=BG, bg=YELLOW, relief="flat", cursor="hand2",
-                                   padx=12, pady=4, bd=0, state="disabled",
-                                   command=self._send_input)
-        self._send_btn.pack(side="left", padx=(0, 4))
+        self._send_btn = tk.Button(
+            row, text="send",
+            font=f(9),
+            fg=CRUST, bg=YELLOW,
+            activeforeground=CRUST, activebackground=TEXT,
+            relief="flat", cursor="hand2",
+            padx=10, pady=5, bd=0, state="disabled",
+            command=self._send_input,
+        )
+        self._send_btn.pack(side="left", padx=(0, 4), pady=4)
 
-        # Ctrl+C only available on macOS/Linux (PTY)
         if not IS_WINDOWS:
-            self._ctrlc_btn = tk.Button(row, text="Ctrl+C", font=self._f(10),
-                                        fg=TEXT, bg=ACCENT2, relief="flat", cursor="hand2",
-                                        padx=10, pady=4, bd=0, state="disabled",
-                                        command=self._send_ctrlc)
-            self._ctrlc_btn.pack(side="left", padx=(0, 8))
+            self._ctrlc_btn = tk.Button(
+                row, text="ctrl+c",
+                font=f(9),
+                fg=OVERLAY, bg=SURFACE,
+                activeforeground=RED, activebackground=SURFACE,
+                relief="flat", cursor="hand2",
+                padx=8, pady=5, bd=0, state="disabled",
+                command=self._send_ctrlc,
+            )
+            self._ctrlc_btn.pack(side="left", padx=(0, 8), pady=4)
         else:
             self._ctrlc_btn = None
 
-        tk.Label(row, text="Type a menu choice and press Enter",
-                 font=self._f(9), fg=MUTED, bg=BG2).pack(side="left")
+        tk.Label(row, text="type a choice and press enter  ",
+                 font=f(8, italic=True), fg=MUTED, bg=MANTLE).pack(side="left")
 
-    def _build_output(self):
-        frame = tk.Frame(self, bg=BG)
-        frame.pack(fill="both", expand=True, padx=14, pady=(8, 4))
-        frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(0, weight=1)
-
-        self._out = tk.Text(frame, font=self._f(11), bg=BG2, fg=TEXT,
-                            insertbackground=ACCENT, relief="flat", bd=0,
-                            state="disabled", wrap="word", cursor="arrow")
-        vsb = tk.Scrollbar(frame, orient="vertical", command=self._out.yview)
-        self._out.configure(yscrollcommand=vsb.set)
-        vsb.grid(row=0, column=1, sticky="ns")
-        self._out.grid(row=0, column=0, sticky="nsew")
-
-        for tag, fg in [("green", GREEN), ("yellow", YELLOW), ("red", ACCENT2),
-                        ("cyan", ACCENT), ("muted", MUTED), ("white", TEXT),
-                        ("input", YELLOW)]:
-            self._out.tag_configure(tag, foreground=fg)
+    # ── Status bar ────────────────────────────────────────────────────────────
 
     def _build_statusbar(self):
-        bar = tk.Frame(self, bg=BG3, height=22)
-        bar.pack(fill="x", side="bottom")
-        self._status = tk.Label(bar, text="Ready.", font=self._f(10), fg=MUTED, bg=BG3)
-        self._status.pack(side="left", padx=12)
-        platform_str = "Windows — Notepad output" if IS_WINDOWS else "macOS — Notes app output"
-        tk.Label(bar, text=platform_str, font=self._f(10), fg=MUTED, bg=BG3
-                 ).pack(side="right", padx=12)
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+        bar = tk.Frame(self, bg=CRUST, height=20)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+        self._status = tk.Label(bar, text="ready", font=f(8),
+                                fg=MUTED, bg=CRUST)
+        self._status.pack(side="left", padx=14)
+        platform_str = "windows · notepad" if IS_WINDOWS else "macos · notes app"
+        tk.Label(bar, text=platform_str, font=f(8),
+                 fg=MUTED, bg=CRUST).pack(side="right", padx=14)
+
+    # ── Widget helpers ────────────────────────────────────────────────────────
+
+    def _section_label(self, parent, text):
+        """Dim uppercase section header with a rule line."""
+        row = tk.Frame(parent, bg=MANTLE)
+        row.pack(fill="x", padx=14, pady=(10, 2))
+        tk.Label(row, text=text, font=f(8),
+                 fg=MUTED, bg=MANTLE).pack(side="left")
+        tk.Frame(row, bg=BORDER, height=1).pack(
+            side="left", fill="x", expand=True, padx=(8, 0), pady=4)
+
+    def _inline_label(self, parent, text, pad_left=0):
+        tk.Label(parent, text=text, font=f(9),
+                 fg=OVERLAY, bg=MANTLE).pack(side="left", padx=(pad_left, 4))
+
+    def _path_row(self, grid, row, label, var_name, browse_cmd, default=""):
+        tk.Label(grid, text=label, font=f(9),
+                 fg=OVERLAY, bg=MANTLE, width=8, anchor="w").grid(
+            row=row, column=0, sticky="w", pady=(0, 4))
+
+        var = tk.StringVar(value=default)
+        setattr(self, var_name, var)
+
+        entry_wrap = tk.Frame(grid, bg=CRUST,
+                              highlightthickness=1,
+                              highlightbackground=BORDER,
+                              highlightcolor=ACCENT)
+        entry_wrap.grid(row=row, column=1, sticky="ew", pady=(0, 4), padx=(0, 6))
+        tk.Entry(entry_wrap, textvariable=var, font=f(10),
+                 bg=CRUST, fg=TEXT, insertbackground=ACCENT,
+                 relief="flat", bd=0
+                 ).pack(fill="x", expand=True, ipady=4, padx=6)
+
+        tk.Button(grid, text="browse", font=f(9),
+                  fg=OVERLAY, bg=SURFACE,
+                  activeforeground=TEXT, activebackground=SURFACE,
+                  relief="flat", cursor="hand2",
+                  padx=8, pady=4, bd=0,
+                  command=browse_cmd).grid(row=row, column=2)
+
+    def _num_entry(self, parent, var):
+        wrap = tk.Frame(parent, bg=CRUST,
+                        highlightthickness=1,
+                        highlightbackground=BORDER,
+                        highlightcolor=ACCENT)
+        wrap.pack(side="left", padx=(4, 0))
+        tk.Entry(wrap, textvariable=var, font=f(10),
+                 bg=CRUST, fg=TEXT, insertbackground=ACCENT,
+                 relief="flat", bd=0, width=4
+                 ).pack(ipady=3, ipadx=4)
+
+    def _pill_check(self, parent, text, var, color):
+        """Tiny inline toggle that looks like a dim badge when off."""
+        frame = tk.Frame(parent, bg=MANTLE, cursor="hand2")
+        frame.pack(side="left", padx=(0, 12))
+
+        dot = tk.Label(frame, font=f(9), bg=MANTLE)
+        lbl = tk.Label(frame, text=text, font=f(9), bg=MANTLE)
+        dot.pack(side="left", padx=(0, 4))
+        lbl.pack(side="left")
+
+        def _draw():
+            if var.get():
+                dot.config(text="◆", fg=color)
+                lbl.config(fg=TEXT)
+            else:
+                dot.config(text="◇", fg=MUTED)
+                lbl.config(fg=MUTED)
+
+        def _toggle(_=None):
+            var.set(not var.get())
+            _draw()
+
+        _draw()
+        for w in (frame, dot, lbl):
+            w.bind("<Button-1>", _toggle)
 
     # ── Script discovery ──────────────────────────────────────────────────────
 
     def _auto_find_script(self):
-        # On Windows look for JBScrape_windows.py first, then fall back to JBScrape.py
         if IS_WINDOWS:
             names = ["JBScrape_windows.py", "jbscrape_windows.py",
                      "JBScrape.py", "jbscrape.py"]
@@ -280,27 +418,27 @@ class JBScrapeUI(tk.Tk):
                 path = os.path.join(d, name)
                 if os.path.isfile(path):
                     self._script_var.set(path)
-                    self._print(f"✓  Found {name} at: {path}\n", "green")
+                    self._print(f"✓  found {name}\n   {path}\n\n", "green")
                     return
 
         self._print(
-            "⚠  Script not found automatically.\n"
-            "   Set the path above to JBScrape.py (macOS) or JBScrape_windows.py (Windows).\n",
-            "yellow"
+            "⚠  script not found automatically.\n"
+            "   set the path above to JBScrape.py (macos) or JBScrape_windows.py (windows).\n\n",
+            "yellow",
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _browse(self):
         path = filedialog.askopenfilename(
-            title="Select JBScrape script",
+            title="select JBScrape script",
             filetypes=[("Python files", "*.py"), ("All files", "*.*")]
         )
         if path:
             self._script_var.set(path)
 
     def _browse_python(self):
-        path = filedialog.askopenfilename(title="Select Python interpreter")
+        path = filedialog.askopenfilename(title="select Python interpreter")
         if path:
             self._python_var.set(path)
 
@@ -326,9 +464,9 @@ class JBScrapeUI(tk.Tk):
         self._out.delete("1.0", "end")
         self._out.configure(state="disabled")
 
-    def _set_status(self, msg, dot_color=MUTED):
+    def _set_status(self, msg, dot_color=None):
         self._status.configure(text=msg)
-        self._dot.configure(text=f"●  {msg}", fg=dot_color)
+        self._dot.configure(text=f"● {msg}", fg=dot_color or OVERLAY)
 
     def _colorize(self, line):
         l = line.lower()
@@ -341,7 +479,7 @@ class JBScrapeUI(tk.Tk):
         if any(x in l for x in ["scanning", "searching", "──", "▶", "ebay", "swappa"]):
             return "cyan"
         if line.startswith("  ") or line.startswith("\t"):
-            return "muted"
+            return "subtext"
         return "white"
 
     # ── Run / Stop ────────────────────────────────────────────────────────────
@@ -349,10 +487,10 @@ class JBScrapeUI(tk.Tk):
     def _run(self):
         script = self._script_var.get().strip()
         if not script:
-            messagebox.showwarning("No script", "Please set the path to the JBScrape script.")
+            messagebox.showwarning("no script", "set the path to the JBScrape script.")
             return
         if not os.path.isfile(script):
-            messagebox.showerror("Not found", f"File not found:\n{script}")
+            messagebox.showerror("not found", f"file not found:\n{script}")
             return
 
         python = self._python_var.get().strip() or sys.executable
@@ -375,14 +513,15 @@ class JBScrapeUI(tk.Tk):
 
         self._clear()
         self._print(f"▶  {' '.join(cmd)}\n\n", "cyan")
-        self._run_btn.configure(state="disabled", bg=MUTED)
-        self._stop_btn.configure(state="normal", bg=ACCENT2)
+        self._run_btn.configure(state="disabled", bg=SURFACE, fg=MUTED)
+        self._stop_btn.configure(state="normal",  bg=RED,     fg=CRUST,
+                                 activeforeground=CRUST, activebackground=RED)
         self._input_entry.configure(state="normal")
         self._send_btn.configure(state="normal")
         if self._ctrlc_btn:
             self._ctrlc_btn.configure(state="normal")
         self._input_entry.focus_set()
-        self._set_status("Running…", dot_color=GREEN)
+        self._set_status("running…", GREEN)
 
         threading.Thread(target=self._run_worker, args=(cmd, script), daemon=True).start()
 
@@ -393,7 +532,7 @@ class JBScrapeUI(tk.Tk):
         else:
             self._run_worker_pty(cmd, cwd)
 
-    # ── macOS / Linux: PTY ───────────────────────────────────────────────────
+    # ── macOS / Linux: PTY ────────────────────────────────────────────────────
 
     def _run_worker_pty(self, cmd, cwd):
         import pty
@@ -415,29 +554,29 @@ class JBScrapeUI(tk.Tk):
                 if not chunk: break
                 buf += chunk
                 text = buf.decode("utf-8", errors="replace")
-                buf = b""
+                buf  = b""
                 self.after(0, self._print, text, self._colorize(text))
 
             self._proc.wait()
             self._finish(self._proc.returncode)
 
         except FileNotFoundError as e:
-            self.after(0, self._print, f"✗  Could not start: {e}\n", "red")
-            self.after(0, self._set_status, "Error.", ACCENT2)
+            self.after(0, self._print, f"✗  could not start: {e}\n", "red")
+            self.after(0, self._set_status, "error", RED)
         except Exception as e:
             self.after(0, self._print, f"✗  {e}\n", "red")
-            self.after(0, self._set_status, "Error.", ACCENT2)
+            self.after(0, self._set_status, "error", RED)
         finally:
             try: os.close(master_fd)
             except OSError: pass
             if slave_fd != -1:
                 try: os.close(slave_fd)
                 except OSError: pass
-            self._proc = None
+            self._proc       = None
             self._pty_master = None
             self.after(0, self._run_done)
 
-    # ── Windows: pipe-based ──────────────────────────────────────────────────
+    # ── Windows: pipe-based ───────────────────────────────────────────────────
 
     def _run_worker_windows(self, cmd, cwd):
         try:
@@ -460,26 +599,26 @@ class JBScrapeUI(tk.Tk):
             self._finish(self._proc.returncode)
 
         except FileNotFoundError as e:
-            self.after(0, self._print, f"✗  Could not start: {e}\n", "red")
-            self.after(0, self._set_status, "Error.", ACCENT2)
+            self.after(0, self._print, f"✗  could not start: {e}\n", "red")
+            self.after(0, self._set_status, "error", RED)
         except Exception as e:
             self.after(0, self._print, f"✗  {e}\n", "red")
-            self.after(0, self._set_status, "Error.", ACCENT2)
+            self.after(0, self._set_status, "error", RED)
         finally:
-            self._proc = None
-            self._stdin_pipe = None
+            self._proc        = None
+            self._stdin_pipe  = None
             self.after(0, self._run_done)
 
     def _finish(self, rc):
         if rc == 0:
-            self.after(0, self._print, "\n✓  JBScrape finished.\n", "green")
-            self.after(0, self._set_status, "Done.", ACCENT)
+            self.after(0, self._print, "\n✓  jbscrape finished.\n", "green")
+            self.after(0, self._set_status, "done", ACCENT)
         elif rc is not None and rc < 0:
-            self.after(0, self._print, "\n⏹  Stopped.\n", "yellow")
-            self.after(0, self._set_status, "Stopped.", YELLOW)
+            self.after(0, self._print, "\n⏹  stopped.\n", "yellow")
+            self.after(0, self._set_status, "stopped", YELLOW)
         else:
-            self.after(0, self._print, f"\n⚠  Exited with code {rc}\n", "yellow")
-            self.after(0, self._set_status, f"Exited ({rc})", YELLOW)
+            self.after(0, self._print, f"\n⚠  exited with code {rc}\n", "yellow")
+            self.after(0, self._set_status, f"exited ({rc})", YELLOW)
 
     def _stop(self):
         if self._proc:
@@ -488,8 +627,8 @@ class JBScrapeUI(tk.Tk):
                 threading.Timer(2.0, self._force_kill).start()
             except Exception:
                 pass
-        self._set_status("Stopping…", dot_color=YELLOW)
-        self._stop_btn.configure(state="disabled", bg=BG3)
+        self._set_status("stopping…", YELLOW)
+        self._stop_btn.configure(state="disabled", bg=SURFACE, fg=OVERLAY)
 
     def _force_kill(self):
         if self._proc:
@@ -497,7 +636,6 @@ class JBScrapeUI(tk.Tk):
             except Exception: pass
 
     def _send_ctrlc(self):
-        """Send Ctrl+C via PTY (macOS/Linux only)."""
         if self._pty_master is not None:
             try: os.write(self._pty_master, b"\x03")
             except OSError: pass
@@ -508,31 +646,29 @@ class JBScrapeUI(tk.Tk):
         if not text:
             return
         if IS_WINDOWS:
-            # Write to stdin pipe
             if self._stdin_pipe:
                 try:
                     self._stdin_pipe.write(text + "\n")
                     self._stdin_pipe.flush()
                     self._print(f"› {text}\n", "input")
                 except OSError:
-                    self._print("⚠  Could not send input.\n", "yellow")
+                    self._print("⚠  could not send input.\n", "yellow")
         else:
-            # Write to PTY master
             if self._pty_master is not None:
                 try: os.write(self._pty_master, (text + "\n").encode())
                 except OSError:
-                    self._print("⚠  Could not send input.\n", "yellow")
+                    self._print("⚠  could not send input.\n", "yellow")
 
     def _run_done(self):
-        self._run_btn.configure(state="normal", bg=ACCENT)
-        self._stop_btn.configure(state="disabled", bg=BG3)
+        self._run_btn.configure(state="normal",   bg=ACCENT,  fg=CRUST)
+        self._stop_btn.configure(state="disabled", bg=SURFACE, fg=OVERLAY)
         self._input_entry.configure(state="disabled")
         self._send_btn.configure(state="disabled")
         if self._ctrlc_btn:
             self._ctrlc_btn.configure(state="disabled")
 
 
-# ─── Entry ────────────────────────────────────────────────────────────────────
+# ── Entry ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app = JBScrapeUI()
