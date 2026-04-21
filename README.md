@@ -12,9 +12,9 @@ Original script by [zeroxjf](https://github.com/zeroxjf/JBScrape). This fork add
 
 | File | Platform | Description |
 |---|---|---|
-| `JBScrape.py` | macOS | Scraper — saves results to macOS Notes |
-| `JBScrape_windows.py` | Windows | Scraper — opens results in Notepad |
-| `jbscrape_ui.py` | macOS + Windows | Graphical UI wrapper for either script |
+| `JBS.py` | macOS | Scraper — saves results to macOS Notes |
+| `JBSW.py` | Windows | Scraper — opens results in Notepad |
+| `JBSUI.py` | macOS + Windows | Graphical UI wrapper for either script |
 | `requirements.txt` | Both | Python dependencies |
 
 ---
@@ -77,10 +77,10 @@ The UI works on both macOS and Windows. It automatically picks the right script 
 
 ```bash
 # macOS
-python3 jbscrape_ui.py
+python3 JBSUI.py
 
 # Windows
-python jbscrape_ui.py
+python JBSUI.py
 ```
 
 #### UI controls
@@ -108,25 +108,25 @@ python jbscrape_ui.py
 **macOS:**
 ```bash
 # Interactive mode (default)
-python3 JBScrape.py
+python3 JBS.py
 
 # eBay only, Chrome, 3 pages
-python3 JBScrape.py --sites ebay --browser chrome --pages 3
+python3 JBS.py --sites ebay --browser chrome --pages 3
 
 # Both sites, Firefox, show browser, save to Notes
-python3 JBScrape.py --sites ebay swappa --browser firefox --no-headless --note
+python3 JBS.py --sites ebay swappa --browser firefox --no-headless --note
 
 # Save results to a specific JSON file
-python3 JBScrape.py --output ~/Desktop/results.json
+python3 JBS.py --output ~/Desktop/results.json
 ```
 
 **Windows:**
 ```bat
 :: Interactive mode
-python JBScrape_windows.py
+python JBSW.py
 
 :: Both sites, Edge, open in Notepad
-python JBScrape_windows.py --sites ebay swappa --browser edge --note
+python JBSW.py --sites ebay swappa --browser edge --note
 ```
 
 #### All arguments
@@ -186,7 +186,7 @@ xattr -cr /opt/homebrew/bin/chromedriver
 
 **UI input not registering on macOS**
 
-The UI uses a pseudo-terminal (PTY) so JBScrape's interactive prompts work. If input still doesn't work, try running the script directly in Terminal first to confirm it works outside the UI.
+The UI uses a pseudo-terminal (PTY), so JBScrape's interactive prompts work. If input still doesn't work, try running the script directly in Terminal first to confirm it works outside the UI.
 
 **Swappa is very slow**
 
