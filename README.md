@@ -26,7 +26,7 @@ Original script by [zeroxjf](https://github.com/zeroxjf/JBScrape). This fork add
 | 16.0 – 16.5 | Dopamine |
 | 16.5.1 – 16.6.1 | nathanlr |
 | 17.0 | nathanlr (via TrollStore) |
-
+| 17.0 - 17.3.1 | Relaxin. |
 ---
 
 ## Installation
